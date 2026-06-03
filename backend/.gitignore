@@ -1,0 +1,17 @@
+node_modules
+dist
+
+# Environment variables (secret!)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
