@@ -12,7 +12,7 @@
 
 ## � Demo
 
-> Telegramda sinab ko'rish: [@YourBotUsername](https://t.me/YourBotUsername)
+> Telegramda sinab ko'rish: [@money_manager_uz_bot](https://t.me/money_manager_uz_bot)
 
 ---
 
@@ -51,7 +51,7 @@
 ### 1. Reponi klonlash
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/money-manager-telegram-mini-app.git
+git clone https://github.com/shohruzisroilov/money-manager-telegram-mini-app.git
 cd money-manager-telegram-mini-app
 ```
 
@@ -228,4 +228,4 @@ Bu loyiha [MIT](./LICENSE) litsenziyasi ostida tarqatiladi.
 
 ## 👤 Muallif
 
-**Shohruz** — [@YourTelegram](https://t.me/YourTelegram)
+**Shohruz** — [@Shohruz_Isroilov](https://t.me/Shohruz_Isroilov)
