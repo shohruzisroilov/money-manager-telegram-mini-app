@@ -36,7 +36,7 @@
 | **Backend** | Node.js, TypeScript, Express.js |
 | **Ma'lumotlar bazasi** | PostgreSQL |
 | **Auth** | Telegram WebApp `initData` HMAC-SHA256 verification |
-| **Deploy** | Vercel (frontend), Railway (backend + DB) |
+| **Deploy** | Hetzner VPS, Nginx, PM2, Let's Encrypt SSL |
 
 ---
 
@@ -109,42 +109,206 @@ Frontend `http://localhost:5173` da ochiladi.
 
 ---
 
-## 🌐 Production ga deploy qilish
+## 🌐 Production ga deploy qilish (Hetzner VPS)
 
-### Backend — Railway
+### Talablar
+- Hetzner CX22 server (Ubuntu 24.04) — ~$4.99/oy
+- [DuckDNS](https://www.duckdns.org) bepul subdomain (HTTPS uchun)
 
-1. [railway.app](https://railway.app) → GitHub bilan kirish
-2. **New Project** → **Deploy from GitHub repo**
-3. **Root Directory** → `backend`
-4. **Add Service** → **PostgreSQL** (Railway `DATABASE_URL` ni o'zi ulaydi)
-5. **Variables** qo'shing:
+---
+
+### 1. Server ga kirish
+
+```bash
+ssh root@YOUR_SERVER_IP
+```
+
+### 2. Tizimni yangilash va kerakli dasturlarni o'rnatish
+
+```bash
+apt update && apt upgrade -y
+
+# Node.js 20
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt install -y nodejs
+
+# PostgreSQL
+apt install -y postgresql postgresql-contrib
+
+# Nginx
+apt install -y nginx
+
+# PM2 (process manager)
+npm install -g pm2
+
+# Certbot (SSL)
+apt install -y certbot python3-certbot-nginx
+
+# Git
+apt install -y git
+```
+
+### 3. PostgreSQL sozlash
+
+```bash
+sudo -u postgres psql
+```
+
+```sql
+CREATE DATABASE money_manager;
+CREATE USER mmuser WITH PASSWORD 'kuchli_parol_yozing';
+GRANT ALL PRIVILEGES ON DATABASE money_manager TO mmuser;
+\q
+```
+
+### 4. DuckDNS subdomain olish
+
+1. [duckdns.org](https://www.duckdns.org) ga kiring (GitHub/Google bilan)
+2. Subdomain yarating: masalan `moneymanager` → `moneymanager.duckdns.org`
+3. **current ip** ga serveringiz IP sini kiriting → **update ip**
+
+### 5. Loyihani serverga yuklash
+
+```bash
+cd /var/www
+git clone https://github.com/shohruzisroilov/money-manager-telegram-mini-app.git
+cd money-manager-telegram-mini-app
+```
+
+### 6. Backend sozlash
+
+```bash
+cd backend
+npm install
+npm run build
+
+# .env fayl yaratish
+cp .env.example .env
+nano .env
+```
+
+`.env` faylini to'ldiring:
 
 ```env
-NODE_ENV=production
-TELEGRAM_BOT_TOKEN=your_bot_token
-CLIENT_URL=https://your-app.vercel.app
 PORT=3000
+DATABASE_URL=postgresql://mmuser:kuchli_parol_yozing@localhost:5432/money_manager
+CLIENT_URL=https://moneymanager.duckdns.org
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+NODE_ENV=production
 ```
 
-### Frontend — Vercel
+### 7. Frontend build
 
-1. [vercel.com](https://vercel.com) → GitHub bilan kirish
-2. **New Project** → reponi tanlang
-3. **Root Directory** → `frontend`
-4. **Environment Variables**:
+```bash
+cd ../frontend
+npm install
 
-```env
-VITE_API_URL=https://your-backend.railway.app
+# .env fayl
+echo "VITE_API_URL=https://moneymanager.duckdns.org/api" > .env.local
+# Lekin biz Nginx orqali /api proxy qilamiz, shuning uchun:
+echo "VITE_API_URL=" > .env.local
+
+npm run build
 ```
 
-### Telegram Bot sozlash
+> **Eslatma:** Nginx backend `/api` ni proxy qiladi, frontend va backend bir domenda ishlaydi.
+
+### 8. PM2 bilan backendni ishga tushirish
+
+```bash
+cd /var/www/money-manager-telegram-mini-app/backend
+pm2 start dist/index.js --name money-manager-api
+pm2 save
+pm2 startup
+```
+
+### 9. Nginx sozlash
+
+```bash
+nano /etc/nginx/sites-available/money-manager
+```
+
+Quyidagi konfigni kiriting:
+
+```nginx
+server {
+    listen 80;
+    server_name moneymanager.duckdns.org;
+
+    # Frontend (static files)
+    location / {
+        root /var/www/money-manager-telegram-mini-app/frontend/dist;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Backend API proxy
+    location /api {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+```bash
+ln -s /etc/nginx/sites-available/money-manager /etc/nginx/sites-enabled/
+nginx -t
+systemctl reload nginx
+```
+
+### 10. SSL sertifikat (HTTPS)
+
+```bash
+certbot --nginx -d moneymanager.duckdns.org
+```
+
+Savollarga javob bering (email, agree) — SSL avtomatik o'rnatiladi.
+
+### 11. Telegram Bot sozlash
 
 [@BotFather](https://t.me/BotFather) da:
 
 ```
-/newapp  yoki  /setmenubutton
-URL: https://your-app.vercel.app
-Tugma nomi: 💰 Money Manager
+/setmenubutton
+→ Botingizni tanlang
+→ URL: https://moneymanager.duckdns.org
+→ Tugma nomi: 💰 Money Manager
+```
+
+### 12. Tekshirish
+
+```bash
+# Backend ishlayaptimi?
+pm2 status
+
+# Nginx ishlayaptimi?
+systemctl status nginx
+
+# Loglar
+pm2 logs money-manager-api
+```
+
+Brauzerda `https://moneymanager.duckdns.org` ni oching ✅
+
+---
+
+### Yangilanishlarni deploy qilish
+
+```bash
+cd /var/www/money-manager-telegram-mini-app
+git pull
+
+# Backend
+cd backend && npm run build
+pm2 restart money-manager-api
+
+# Frontend
+cd ../frontend && npm run build
 ```
 
 ---
